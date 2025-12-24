@@ -8,6 +8,7 @@ void registration(int fd, char *buffer, int amount_bytes, struct User *users, sq
     int action = -1;
     char name[51];
     char password[31];
+    //parse command as :type:name:password:
     int argc = sscanf(buffer, ":%d:%50[^:]:%30[^:]:", &action, name, password);
     printf("Receive from %d: %s", fd, buffer);
     if (argc < 3) {

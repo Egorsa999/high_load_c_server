@@ -10,6 +10,7 @@ void user_request(int fd, char *buffer, int amount_bytes, struct User *users, sq
     if (users[fd].logged == 0) {
         registration(fd, buffer, amount_bytes, users, database);
     } else {
+        // send message to each connected user
         for (int i = 1; i < nfds; i++) {
             if (users[fds[i].fd].logged && users[fds[i].fd].id != users[fd].id) {
                 char message[1024];

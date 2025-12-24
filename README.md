@@ -1,4 +1,4 @@
-# High-load C Char Server
+# High-load C Chat Server
 
 Implemented TCP chat server on C with sqlite3 for storage User data. This project easy for scaling and can handling around ten thousands simultaneous connections.
 

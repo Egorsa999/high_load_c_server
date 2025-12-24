@@ -29,7 +29,7 @@ Implemented TCP chat server on C with sqlite3 for storage User data. This projec
 - Login: Send:
    ```bash
    :1:username:password:
-- Messaging: After Login into account every message will send to each user.
+- Messaging: After Login into account every message will send to each logged user.
 
 ---
 

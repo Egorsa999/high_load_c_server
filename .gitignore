@@ -1,4 +1,1 @@
-*.o
-server
-*.db
-.DS_Store
+.idea/

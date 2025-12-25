@@ -13,6 +13,10 @@
 #define BACKLOG 32768 // max amount of simultaneous connections
 
 int main(void) {
+    //for logs in docker
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+
     int sockfd, new_fd;
     struct sockaddr_storage their_addr; // information about connected client
     socklen_t sin_size;

@@ -37,7 +37,7 @@ Implemented TCP chat server on C with sqlite3 for storage User data. This projec
 - Add private messaging between two clients.
 - Store messages in database.
 - Hashing messages and passwords in database.
-- Create a Dockerfile for easy deployment in any environment.
+- Create a Dockerfile for easy deployment in any environment. ✅
 - Switch from 'poll()' to 'epoll()' or it equivalent.
 - Implement WebSocket handshake and framing to support browser clients.
 

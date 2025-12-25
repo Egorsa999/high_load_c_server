@@ -29,3 +29,12 @@ clean:
 	rm -f $(OBJ) $(TARGET) server.db
 
 re: clean all
+
+docker-build:
+	docker build -t high_load_c_server .
+
+docker-run:
+	docker run -p 3490:3490 --rm --name my_server high_load_c_server
+
+docker-stop:
+	docker stop my_server

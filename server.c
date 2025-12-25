@@ -28,8 +28,8 @@ int main(void) {
         exit(1);
     }
 
-    struct pollfd fds[BACKLOG + 1]; // socket's array
-    struct User users[BACKLOG + 1]; // user's array
+    struct pollfd *fds = calloc(BACKLOG + 1, sizeof(struct pollfd)); // socket's array
+    struct User *users = calloc(BACKLOG + 1, sizeof(struct User)); // user's array
     int nfds = 1; // amount of connections
     int amount_connection = 0; // count of all connections
 
@@ -47,7 +47,6 @@ int main(void) {
             perror("poll");
             exit(1);
         }
-
 
         // check new connection
         if (fds[0].revents & POLLIN) {

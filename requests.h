@@ -8,6 +8,7 @@
 
 #include "user.h"
 #include "registration.h"
+#include "config.h"
 
 /**
  * process users commands

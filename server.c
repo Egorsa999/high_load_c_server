@@ -8,9 +8,7 @@
 #include "user.h"
 #include "network.h"
 #include "requests.h"
-
-#define PORT "3490" // port for listening socket
-#define BACKLOG 32768 // max amount of simultaneous connections
+#include "config.h"
 
 int main(void) {
     //for logs in docker
@@ -60,8 +58,11 @@ int main(void) {
                 // client ip-address convert
                 inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr*)&their_addr), s, sizeof(s));
 
-                char message[1024];
-                int message_lenght = sprintf(message, "You are %d who connect.\nYou can create account/login into account in format :0/1:name:password:\nWhere 0 it's you want create account, 1 it's you want log into account\n", amount_connection);
+                char message[SEND_SIZE];
+                unsigned int message_lenght = snprintf(message, sizeof(message), "You are %d who connect.\nYou can create account/login into account in format :0/1:name:password:\nWhere 0 it's you want create account, 1 it's you want log into account\n", amount_connection);
+                if (message_lenght >= sizeof(message)) {
+                    message_lenght = sizeof(message) - 1;
+                }
                 if (send(new_fd, message, message_lenght, 0) == -1) {
                     perror("send");
                 }
@@ -84,8 +85,8 @@ int main(void) {
         for (int i = 1; i < nfds; i++) {
             if (!(fds[i].revents & POLLIN)) continue;
 
-            char buffer[1024];
-            int amount_bytes = recv(fds[i].fd, buffer, sizeof(buffer), 0);
+            char buffer[RECEIVE_SIZE];
+            int amount_bytes = recv(fds[i].fd, buffer, sizeof(buffer) - 1, 0);
             if (amount_bytes <= 0) {
                 // client close connection or some error
                 if (amount_bytes == 0) {
@@ -108,6 +109,8 @@ int main(void) {
     }
 
     sqlite3_close(database);
+    free(users);
+    free(fds);
 
     return 0;
 }

@@ -10,19 +10,19 @@ all: $(TARGET)
 $(TARGET): $(OBJ)
 	$(CC) $(OBJ) -o $(TARGET) $(LIBS)
 
-server.o: server.c user.h network.h requests.h
+server.o: server.c user.h network.h requests.h config.h
 	$(CC) $(CFLAGS) -c server.c
 
 user.o: user.c user.h
 	$(CC) $(CFLAGS) -c user.c
 
-requests.o: requests.c requests.h user.h registration.h
+requests.o: requests.c requests.h user.h registration.h config.h
 	$(CC) $(CFLAGS) -c requests.c
 
 network.o: network.c network.h
 	$(CC) $(CFLAGS) -c network.c
 
-registration.o: registration.c registration.h user.h
+registration.o: registration.c registration.h user.h config.h
 	$(CC) $(CFLAGS) -c registration.c
 
 clean:

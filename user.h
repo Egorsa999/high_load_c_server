@@ -3,11 +3,13 @@
 
 #include <sqlite3.h>
 
+#include "config.h"
+
 struct User {
     int logged;
     int id;
-    char name[51];
-    char password[31];
+    char name[USERNAME_SIZE];
+    char password[PASSWORD_SIZE];
 };
 
 /**

@@ -10,6 +10,7 @@ Implemented TCP chat server on C with sqlite3 for storage User data. This projec
 - `user.c/h`: Operations with database.
 - `requests.c/h`: User requests processing.
 - `registration.c/h`: Auth logic.
+- `config.h`: some constants
 
 ---
 
@@ -31,6 +32,7 @@ Implemented TCP chat server on C with sqlite3 for storage User data. This projec
    :1:username:password:
 - Messaging: After Login into account every message will send to each connected user.
 
+- Command separator is '\n', this can change in config.h as CMD_SEP.
 ---
 
 ## Roadmap

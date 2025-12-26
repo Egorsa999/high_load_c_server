@@ -72,12 +72,12 @@ int main(void) {
                 fds[nfds].events = POLLIN;
 
                 // init user as not logged
+                memset(&users[new_fd], 0, sizeof(struct User));
                 users[new_fd].logged = 0;
                 users[new_fd].id = -1;
-                printf("Got connection from: %s\nSocket id: %d\n", s, new_fd);
-                memset(users[new_fd].name, 0, sizeof(users[new_fd].name));
-                memset(users[new_fd].password, 0, sizeof(users[new_fd].password));
                 nfds++;
+
+                printf("Got connection from: %s\nSocket id: %d\n", s, new_fd);
             }
         }
 
@@ -85,12 +85,14 @@ int main(void) {
         for (int i = 1; i < nfds; i++) {
             if (!(fds[i].revents & POLLIN)) continue;
 
-            char buffer[RECEIVE_SIZE];
-            int amount_bytes = recv(fds[i].fd, buffer, sizeof(buffer) - 1, 0);
+            struct User *user = &users[fds[i].fd];
+
+            int remaining_size = RECEIVE_SIZE - user -> buffer_size;
+            int amount_bytes = recv(fds[i].fd, user -> buffer + user -> buffer_size, remaining_size, 0);
             if (amount_bytes <= 0) {
-                // client close connection or some error
+                // client close connection or flood or some error
                 if (amount_bytes == 0) {
-                    printf("Socket %d hung up\n", fds[i].fd);
+                    printf("Socket %d hung up or flood\n", fds[i].fd);
                 } else {
                     perror("recv");
                 }
@@ -102,9 +104,36 @@ int main(void) {
                 i--;
                 continue;
             }
-            buffer[amount_bytes] = '\0';
 
-            user_request(fds[i].fd, buffer, amount_bytes, users, database, fds, nfds);
+            user -> buffer_size += amount_bytes;
+
+            char *ptr;
+            int shift_size = 0;
+            char *last = user -> buffer;
+
+            // find separator
+            while ((ptr = memchr(user -> buffer + user -> buffer_checked, CMD_SEP, user -> buffer_size - user -> buffer_checked))) {
+                int cmd_size = ptr - last + 1;
+                *ptr = '\0';
+
+                printf("Found command: %s\n", last);
+                // processing command
+                user_request(fds[i].fd, last, cmd_size, users, database, fds, nfds);
+
+                last = ptr + 1;
+                user -> buffer_checked = last - user -> buffer;
+            }
+
+            //shift if we do some commands
+            if (last != user -> buffer) {
+                remaining_size = user -> buffer_size - (last - user -> buffer);
+                if (remaining_size > 0) {
+                    memmove(user -> buffer, last, remaining_size);
+                }
+                user -> buffer_size = remaining_size;
+            }
+
+            user -> buffer_checked = user -> buffer_size;
         }
     }
 

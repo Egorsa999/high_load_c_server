@@ -10,6 +10,10 @@ struct User {
     int id;
     char name[USERNAME_SIZE];
     char password[PASSWORD_SIZE];
+
+    char buffer[RECEIVE_SIZE];
+    int buffer_size;
+    int buffer_checked;
 };
 
 /**

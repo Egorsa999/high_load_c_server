@@ -12,4 +12,6 @@
 #define USERNAME_SIZES "50" // max size of username for parsing
 #define PASSWORD_SIZES "30" // max size of password for parsing
 
+#define CMD_SEP '\n' // command separator
+
 #endif //HIGH_LOAD_C_SERVER_CONFIG_H

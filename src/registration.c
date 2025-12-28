@@ -1,11 +1,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <poll.h>
 
 #include "user.h"
 #include "config.h"
+#include "network.h"
 
-void registration(int fd, char *buffer, int amount_bytes, struct User *users, sqlite3 *database) {
+void registration(int fd, char *buffer, int amount_bytes, struct User *users, sqlite3 *database, struct pollfd *poll_struct) {
     int action = -1;
     char name[USERNAME_SIZE];
     char password[PASSWORD_SIZE];
@@ -14,7 +16,7 @@ void registration(int fd, char *buffer, int amount_bytes, struct User *users, sq
 
     //parse command as :type:name:password:
     int argc = sscanf(buffer, ":%d:%" USERNAME_SIZES "[^:]:%" PASSWORD_SIZES "[^:]:", &action, name, password);
-    printf("Receive from %d: %s", fd, buffer);
+    printf("Receive from %d: %s\n", fd, buffer);
     if (argc < 3) {
         printf("Bad format from %d\n", fd);
         char message[SEND_SIZE];
@@ -22,7 +24,7 @@ void registration(int fd, char *buffer, int amount_bytes, struct User *users, sq
         if (message_lenght >= sizeof(message)) {
             message_lenght = sizeof(message) - 1;
         }
-        if (send(fd, message, message_lenght, 0) == -1) {
+        if (send_message(fd, &users[fd], poll_struct, message, message_lenght) == -1) {
             perror("send");
         }
     } else {
@@ -47,7 +49,7 @@ void registration(int fd, char *buffer, int amount_bytes, struct User *users, sq
             if (message_lenght >= sizeof(message)) {
                 message_lenght = sizeof(message) - 1;
             }
-            if (send(fd, message, message_lenght, 0) == -1) {
+            if (send_message(fd, &users[fd], poll_struct, message, message_lenght) == -1) {
                 perror("send");
             }
         }
@@ -78,7 +80,7 @@ void registration(int fd, char *buffer, int amount_bytes, struct User *users, sq
             if (message_lenght >= sizeof(message)) {
                 message_lenght = sizeof(message) - 1;
             }
-            if (send(fd, message, message_lenght, 0) == -1) {
+            if (send_message(fd, &users[fd], poll_struct, message, message_lenght) == -1) {
                 perror("send");
             }
         }
@@ -90,7 +92,7 @@ void registration(int fd, char *buffer, int amount_bytes, struct User *users, sq
             if (message_lenght >= sizeof(message)) {
                 message_lenght = sizeof(message) - 1;
             }
-            if (send(fd, message, message_lenght, 0) == -1) {
+            if (send_message(fd, &users[fd], poll_struct, message, message_lenght) == -1) {
                 perror("send");
             }
         }

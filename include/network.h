@@ -41,6 +41,6 @@ int set_nonblocking(int sockfd);
  * @param size message size
  * @return execution code
  */
-int send_message(int fd, struct User *user, struct pollfd *poll_struct, const char *message, int size);
+int send_message(int fd, struct User *user, struct pollfd *poll_struct, char *message, int size);
 
 #endif //TEST_NETWORK_H

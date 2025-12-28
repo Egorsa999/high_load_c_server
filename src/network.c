@@ -3,6 +3,7 @@
 
 #include "network.h"
 #include "user.h"
+#include "websocket.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,7 +29,12 @@ void *get_in_addr(struct sockaddr *sa) {
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-int send_message(int fd, struct User *user, struct pollfd *poll_struct, const char *message, int size) {
+int send_message(int fd, struct User *user, struct pollfd *poll_struct, char *message, int size) {
+    if (user -> state == PROTO_WS_CONNECTED) {
+        if (text_to_frame(message, &size) == -1) {
+            return -1; // buffer overflow
+        }
+    }
     // check if buffer not empty
     if (user -> obuffer_size) {
         if (user -> obuffer_size + size > SEND_SIZE) {

@@ -5,19 +5,28 @@
 
 #include "config.h"
 
+typedef enum {
+    PROTO_UNKNOWN,
+    PROTO_TCP,
+    PROTO_WS_HANDSHAKE,
+    PROTO_WS_CONNECTED
+} UserState;
+
 struct User {
     int logged;
     int id;
     char name[USERNAME_SIZE];
     char password[PASSWORD_SIZE];
-    //input buffer
-    char buffer[RECEIVE_SIZE];
+    // input buffer
+    char buffer[RECEIVE_SIZE + 1];
     int buffer_size;
     int buffer_checked;
-    //output buffer
+    // output buffer
     char obuffer[SEND_SIZE];
     int obuffer_size;
     int obuffer_sent;
+    // connection type
+    UserState state;
 };
 
 /**

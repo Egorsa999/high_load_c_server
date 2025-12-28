@@ -11,6 +11,7 @@
 #include "network.h"
 #include "requests.h"
 #include "config.h"
+#include "websocket.h"
 
 int main(void) {
     //for logs in docker
@@ -73,15 +74,6 @@ int main(void) {
                 // client ip-address convert
                 inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr*)&their_addr), s, sizeof(s));
 
-                char message[SEND_SIZE];
-                unsigned int message_lenght = snprintf(message, sizeof(message), "You are %d who connect.\nYou can create account/login into account in format :0/1:name:password:\nWhere 0 it's you want create account, 1 it's you want log into account\n", amount_connection);
-                if (message_lenght >= sizeof(message)) {
-                    message_lenght = sizeof(message) - 1;
-                }
-                if (send(new_fd, message, message_lenght, 0) == -1) {
-                    perror("send");
-                }
-
                 //if socket too large
                 if (new_fd >= BACKLOG) {
                     close(new_fd);
@@ -95,6 +87,7 @@ int main(void) {
 
                 // init user as not logged
                 memset(&users[new_fd], 0, sizeof(struct User));
+                users[new_fd].state = PROTO_UNKNOWN;
                 users[new_fd].logged = 0;
                 users[new_fd].id = -1;
                 nfds++;
@@ -111,6 +104,9 @@ int main(void) {
                 int remaining_size = RECEIVE_SIZE - user -> buffer_size;
                 int amount_bytes = recv(fds[i].fd, user -> buffer + user -> buffer_size, remaining_size, 0);
                 if (amount_bytes <= 0) {
+                    if (amount_bytes == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                        continue; // socket still alive
+                    }
                     // client close connection or flood or some error
                     if (amount_bytes == 0) {
                         printf("Socket %d hung up or flood\n", fds[i].fd);
@@ -129,33 +125,115 @@ int main(void) {
 
                 user -> buffer_size += amount_bytes;
 
-                char *ptr;
-                int shift_size = 0;
-                char *last = user -> buffer;
-
-                // find separator
-                while ((ptr = memchr(user -> buffer + user -> buffer_checked, CMD_SEP, user -> buffer_size - user -> buffer_checked))) {
-                    int cmd_size = ptr - last + 1;
-                    *ptr = '\0';
-
-                    printf("Found command: %s\n", last);
-                    // processing command
-                    user_request(fds[i].fd, last, cmd_size, users, database, fds, nfds);
-
-                    last = ptr + 1;
-                    user -> buffer_checked = last - user -> buffer;
-                }
-
-                //shift if we do some commands
-                if (last != user -> buffer) {
-                    remaining_size = user -> buffer_size - (last - user -> buffer);
-                    if (remaining_size > 0) {
-                        memmove(user -> buffer, last, remaining_size);
+                // determine it's TCP or WebSocket
+                if (user -> state == PROTO_UNKNOWN) {
+                    if (user -> buffer_size >= 3) {
+                        if (strncmp(user -> buffer, "GET", 3) == 0) {
+                            user -> state = PROTO_WS_HANDSHAKE;
+                        } else {
+                            user -> state = PROTO_TCP;
+                        }
+                    } else {
+                        continue;
                     }
-                    user -> buffer_size = remaining_size;
                 }
 
-                user -> buffer_checked = user -> buffer_size;
+                if (user -> state == PROTO_TCP) {
+                    char *ptr;
+                    int shift_size = 0;
+                    char *last = user -> buffer;
+
+                    // find separator
+                    while ((ptr = memchr(user -> buffer + user -> buffer_checked, CMD_SEP, user -> buffer_size - user -> buffer_checked))) {
+                        int cmd_size = ptr - last + 1;
+                        *ptr = '\0';
+
+                        printf("Found command: %s\n", last);
+                        // processing command
+                        user_request(fds[i].fd, last, cmd_size, users, database, fds, nfds, &fds[i]);
+
+                        last = ptr + 1;
+                        user -> buffer_checked = last - user -> buffer;
+                    }
+
+                    //shift if we do some commands
+                    if (last != user -> buffer) {
+                        remaining_size = user -> buffer_size - (last - user -> buffer);
+                        if (remaining_size > 0) {
+                            memmove(user -> buffer, last, remaining_size);
+                        }
+                        user -> buffer_size = remaining_size;
+                    }
+
+                    user -> buffer_checked = user -> buffer_size;
+                } else {
+                    if (user -> state == PROTO_WS_HANDSHAKE) {
+                        user -> buffer[user -> buffer_size] = '\0';
+                        // start search from -3 bytes because length string is 4
+                        char *ptr = strstr(user -> buffer + (user -> buffer_checked >= 3 ? user -> buffer_checked - 3 : 0), "\r\n\r\n");
+                        if (ptr) {
+                            if (ws_handshake(fds[i].fd, user, &fds[i]) == 0) {
+                                user -> state = PROTO_WS_CONNECTED;
+                                int header_length = (ptr - user -> buffer) + 4;
+                                int remaining = user -> buffer_size - header_length;
+
+                                //clearing buffer
+                                if (remaining > 0) {
+                                    memmove(user -> buffer, user -> buffer + header_length, remaining);
+                                }
+                                user -> buffer_size = remaining;
+                                user -> buffer_checked = 0;
+
+                                printf("Handshake done correct for socket %d\n", fds[i].fd);
+                            } else {
+                                printf("Handshake failed for socket %d\n", fds[i].fd);
+                                close(fds[i].fd);
+                                memset(&users[fds[i].fd], 0, sizeof(struct User));
+                                fds[i] = fds[nfds - 1];
+                                nfds--;
+                                i--;
+                                continue;
+                            }
+                        } else {
+                            user -> buffer_checked = user -> buffer_size;
+                        }
+                    } else {
+                        if (user -> state == PROTO_WS_CONNECTED) {
+                            int err_code;
+                            int was_checked = user -> buffer_checked;
+                            while ((err_code = frame_to_text(user)) > 0) {
+                                // process command which we receive
+                                user_request(fds[i].fd, user -> buffer + was_checked, err_code, users, database, fds, nfds, &fds[i]);
+                                was_checked = user -> buffer_checked;
+                            }
+                            // close connection
+                            if (err_code == -1) {
+                                printf("WebSocket %d disconnect\n", fds[i].fd);
+                                close(fds[i].fd);
+                                memset(&users[fds[i].fd], 0, sizeof(struct User));
+                                fds[i] = fds[nfds - 1];
+                                nfds--;
+                                i--;
+                                continue;
+                            }
+                            // buffer shift
+                            remaining_size = user -> buffer_size - user -> buffer_checked;
+                            if (remaining_size > 0) {
+                                memmove(user -> buffer, user -> buffer + user -> buffer_checked, remaining_size);
+                            }
+                            user -> buffer_size = remaining_size;
+                            user -> buffer_checked = 0;
+                        } else {
+                            printf("Unknown state.\n");
+                            close(fds[i].fd);
+                            memset(&users[fds[i].fd], 0, sizeof(struct User));
+                            fds[i] = fds[nfds - 1];
+                            nfds--;
+                            i--;
+                            continue;
+                        }
+                    }
+                }
             }
 
             if (fds[i].revents & POLLOUT) {
@@ -186,7 +264,6 @@ int main(void) {
                         continue;
                     }
                 }
-
             }
         }
     }

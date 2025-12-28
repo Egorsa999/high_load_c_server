@@ -11,10 +11,16 @@ Implemented TCP chat server on C with sqlite3 for storage User data. This projec
 │   ├── network.h
 │   ├── registration.h
 │   ├── requests.h
+│   ├── sha1.h
+│   ├── base64.h
+│   ├── websocket.h
 │   └── user.h
 ├── src // Source files.
 │   ├── network.c // Low-level socket management.
 │   ├── registration.c // Auth logic.
+│   ├── websocket.c // WebSocket logic.
+│   ├── sha1.c // Hashing.
+│   ├── base64.c // Encoding.
 │   ├── requests.c // User requests processing.
 │   ├── server.c // Main entry point and event loop.
 │   └── user.c // Operations with database.
@@ -52,8 +58,8 @@ Implemented TCP chat server on C with sqlite3 for storage User data. This projec
 - Store messages in database.
 - Hashing messages and passwords in database.
 - Create a Dockerfile for easy deployment in any environment. ✅
-- Switch from 'poll()' to 'epoll()' or it equivalent.
-- Implement WebSocket handshake and framing to support browser clients.
+- Switch from 'poll()' to 'epoll()' or its equivalent.
+- Implement WebSocket handshake and framing to support browser clients. ✅
 
 ---
 

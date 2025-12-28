@@ -2,6 +2,8 @@
 #define _GNU_SOURCE
 
 #include "network.h"
+#include "user.h"
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -12,6 +14,7 @@
 #include <netinet/in.h>
 #include <sys/wait.h>
 #include <netdb.h>
+#include <poll.h>
 
 void sigchld_handler(int s) {
     (void)s;
@@ -23,6 +26,60 @@ void sigchld_handler(int s) {
 void *get_in_addr(struct sockaddr *sa) {
     if (sa->sa_family == AF_INET) return &(((struct sockaddr_in*)sa)->sin_addr);
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
+int send_message(int fd, struct User *user, struct pollfd *poll_struct, const char *message, int size) {
+    // check if buffer not empty
+    if (user -> obuffer_size) {
+        if (user -> obuffer_size + size > SEND_SIZE) {
+            return -1; // buffer overflow
+        }
+
+        memcpy(user -> obuffer + user -> obuffer_size, message, size);
+        user -> obuffer_size += size;
+        if (poll_struct) {
+            poll_struct -> events |= POLLOUT;
+        }
+        return 0;
+    }
+
+    int sent = send(fd, message, size, 0);
+
+    if (sent == -1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            sent = 0;
+        } else {
+            perror("send");
+            return -1;
+        }
+    }
+
+    // if we don't sent all
+    if (sent < size) {
+        int remaining = size - sent;
+        if (remaining > SEND_SIZE) return -1;
+
+        memcpy(user -> obuffer, message + sent, remaining);
+        user -> obuffer_size = remaining;
+        user -> obuffer_sent = 0;
+        if (poll_struct) {
+            poll_struct -> events |= POLLOUT;
+        }
+    }
+
+    return 0;
+}
+
+int set_nonblocking(int sockfd) {
+    // get flags which exist now
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    if (flags == -1) return -1;
+
+    // add nonblock flag
+    if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        return -1;
+    }
+    return 0;
 }
 
 int get_listener_socket(const char *port, int backlog) {
@@ -68,6 +125,12 @@ int get_listener_socket(const char *port, int backlog) {
 
     if (p == NULL) {
         fprintf(stderr, "server: failed to bind\n");
+        exit(1);
+    }
+
+    // set nonblocking
+    if (set_nonblocking(sockfd) == -1) {
+        perror("set_nonblocking listener");
         exit(1);
     }
 

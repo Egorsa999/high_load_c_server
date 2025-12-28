@@ -5,13 +5,25 @@ Implemented TCP chat server on C with sqlite3 for storage User data. This projec
 ---
 
 ## Project Structure
-- `src/server.c`: Main entry point and event loop.
-- `src/network.c`: Low-level socket management.
-- `src/user.c`: Operations with database.
-- `src/requests.c`: User requests processing.
-- `src/registration.c`: Auth logic.
-- `include/config.h`: some constants.
-
+````
+├── include // Header files.
+│   ├── config.h // Some constants.
+│   ├── network.h
+│   ├── registration.h
+│   ├── requests.h
+│   └── user.h
+├── src // Source files.
+│   ├── network.c // Low-level socket management.
+│   ├── registration.c // Auth logic.
+│   ├── requests.c // User requests processing.
+│   ├── server.c // Main entry point and event loop.
+│   └── user.c // Operations with database.
+├── .gitignore
+├── Dockerfile
+├── LICENSE.txt
+├── Makefile
+└── README.md
+````
 ---
 
 ## Usage Guide
@@ -19,7 +31,7 @@ Implemented TCP chat server on C with sqlite3 for storage User data. This projec
 1. Compile and Start:
    ```bash
    make
-   ./server
+   ./bin/server
 2. Connect via telnet:
    ```bash
    telnet localhost 3490

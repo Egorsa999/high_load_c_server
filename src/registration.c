@@ -9,8 +9,10 @@ void registration(int fd, char *buffer, int amount_bytes, struct User *users, sq
     int action = -1;
     char name[USERNAME_SIZE];
     char password[PASSWORD_SIZE];
-    //parse command as :type:name:password:
+    memset(name, 0, sizeof(name));
+    memset(password, 0, sizeof(password));
 
+    //parse command as :type:name:password:
     int argc = sscanf(buffer, ":%d:%" USERNAME_SIZES "[^:]:%" PASSWORD_SIZES "[^:]:", &action, name, password);
     printf("Receive from %d: %s", fd, buffer);
     if (argc < 3) {

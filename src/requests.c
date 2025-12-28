@@ -12,25 +12,25 @@ void user_request(int fd, char *buffer, int amount_bytes, struct User *users, sq
         registration(fd, buffer, amount_bytes, users, database);
     } else {
         char message[SEND_SIZE];
-        unsigned int message_lenght;
+        unsigned int message_length;
         // send message to each connected user
-        message_lenght = snprintf(message, sizeof(message), "Message from %s: %s\n", users[fd].name, buffer);
-        if (message_lenght >= sizeof(message)) {
-            message_lenght = sizeof(message) - 1;
+        message_length = snprintf(message, sizeof(message), "Message from %s: %s\n", users[fd].name, buffer);
+        if (message_length >= sizeof(message)) {
+            message_length = sizeof(message) - 1;
         }
         for (int i = 1; i < nfds; i++) {
             if (users[fds[i].fd].logged && users[fds[i].fd].id != users[fd].id) {
-                if (send(fds[i].fd, message, message_lenght, 0) == -1) {
+                if (send(fds[i].fd, message, message_length, 0) == -1) {
                     perror("send");
                 }
             }
         }
 
-        message_lenght = snprintf(message, sizeof(message), "You are logged as %s, wait next updates!\nNow your message was sent to every logged user!\n", users[fd].name);
-        if (message_lenght >= sizeof(message)) {
-            message_lenght = sizeof(message) - 1;
+        message_length = snprintf(message, sizeof(message), "You are logged as %s, wait next updates!\nNow your message was sent to every logged user!\n", users[fd].name);
+        if (message_length >= sizeof(message)) {
+            message_length = sizeof(message) - 1;
         }
-        if (send(fd, message, message_lenght, 0) == -1) {
+        if (send(fd, message, message_length, 0) == -1) {
             perror("send");
         }
     }

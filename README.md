@@ -5,12 +5,12 @@ Implemented TCP chat server on C with sqlite3 for storage User data. This projec
 ---
 
 ## Project Structure
-- `server.c`: Main entry point and event loop.
-- `network.c/h`: Low-level socket management.
-- `user.c/h`: Operations with database.
-- `requests.c/h`: User requests processing.
-- `registration.c/h`: Auth logic.
-- `config.h`: some constants
+- `src/server.c`: Main entry point and event loop.
+- `src/network.c`: Low-level socket management.
+- `src/user.c`: Operations with database.
+- `src/requests.c`: User requests processing.
+- `src/registration.c`: Auth logic.
+- `include/config.h`: some constants.
 
 ---
 

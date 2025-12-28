@@ -4,7 +4,7 @@
 
 int init_db(sqlite3 **database) {
     //open or create database file
-    int return_error = sqlite3_open("server.db", database);
+    int return_error = sqlite3_open("data/server.db", database);
     if (return_error != SQLITE_OK) return return_error;
 
     //sql-query

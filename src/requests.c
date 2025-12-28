@@ -14,7 +14,7 @@ void user_request(int fd, char *buffer, int amount_bytes, struct User *users, sq
         char message[SEND_SIZE];
         unsigned int message_lenght;
         // send message to each connected user
-        message_lenght = snprintf(message, sizeof(message), "Message from %s: %s", users[fd].name, buffer);
+        message_lenght = snprintf(message, sizeof(message), "Message from %s: %s\n", users[fd].name, buffer);
         if (message_lenght >= sizeof(message)) {
             message_lenght = sizeof(message) - 1;
         }

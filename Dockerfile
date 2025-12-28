@@ -4,4 +4,4 @@ WORKDIR /app
 COPY . .
 RUN make clean && make
 EXPOSE 3490
-CMD ["./server"]
+CMD ["./bin/server"]

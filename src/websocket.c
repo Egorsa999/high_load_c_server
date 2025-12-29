@@ -34,10 +34,10 @@ int text_to_frame(char *message, int *size) {
     return *size;
 }
 
-int frame_to_text(struct User *user) {
-    if (user -> buffer_size - user -> buffer_checked < 2) return 0; // not enough bytes
+int frame_to_text(struct Client *client) {
+    if (client -> buffer_size - client -> buffer_checked < 2) return 0; // not enough bytes
 
-    unsigned char *data = (unsigned char *)user -> buffer + user -> buffer_checked;
+    unsigned char *data = (unsigned char *)client -> buffer + client -> buffer_checked;
 
     int opcode = data[0] & 0x0F;
     if (opcode == 0x8) return -1; // close connection
@@ -47,7 +47,7 @@ int frame_to_text(struct User *user) {
     int header_length = 2;
 
     if (size == 126) {
-        if (user -> buffer_size - user -> buffer_checked < 4) return 0; // not enough bytes;
+        if (client -> buffer_size - client -> buffer_checked < 4) return 0; // not enough bytes;
         size = (data[2] << 8) | data[3];
         header_length = 4;
     } else {
@@ -59,26 +59,26 @@ int frame_to_text(struct User *user) {
     if (!is_masked) return -1; // protocol error
 
     int total_size = header_length + 4 + size; // + 4 mask byte
-    if (user -> buffer_size - user -> buffer_checked < total_size) return 0; // not enough bytes
+    if (client -> buffer_size - client -> buffer_checked < total_size) return 0; // not enough bytes
 
     // decode
     unsigned char mask[4];
     memcpy(mask, data + header_length, 4);
     unsigned char *payload = data + header_length + 4;
-    char *start = user -> buffer + user -> buffer_checked;
+    char *start = client -> buffer + client -> buffer_checked;
 
     for (int i = 0; i < size; i++) {
         start[i] = payload[i] ^ mask[i % 4];
     }
     start[size] = '\0';
 
-    user -> buffer_checked += total_size;
+    client -> buffer_checked += total_size;
 
     return size;
 }
 
-int ws_handshake(int fd, struct User *user, struct pollfd *poll_struct) {
-    char *buffer = user -> buffer;
+int ws_handshake(struct Server *server, struct Client *client) {
+    char *buffer = client -> buffer;
 
     char *key_start = strstr(buffer, "Sec-WebSocket-Key: ");
     if (!key_start) {
@@ -130,5 +130,5 @@ int ws_handshake(int fd, struct User *user, struct pollfd *poll_struct) {
     );
 
     free(base64_hash);
-    return send_message(fd, user, poll_struct, response, response_len);
+    return send_message(server, client, response, response_len);
 }

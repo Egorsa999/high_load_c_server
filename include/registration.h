@@ -8,16 +8,15 @@
 
 #include "user.h"
 #include "config.h"
+#include "network.h"
 
 /**
  * registration/login logic
- * @param fd user socket id
+ * @param server server struct
+ * @param client client struct
  * @param buffer command from user
  * @param amount_bytes size of command
- * @param users users array
- * @param database database
- * @param poll_struct poll struct
  */
-void registration(int fd, char *buffer, int amount_bytes, struct User *users, sqlite3 *database, struct pollfd *poll_struct);
+void registration(struct Server *server, struct Client *client, char *buffer, int amount_bytes);
 
 #endif //TEST_REGISTRATION_H

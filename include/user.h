@@ -2,6 +2,7 @@
 #define TEST_USER_H
 
 #include <sqlite3.h>
+#include <poll.h>
 
 #include "config.h"
 
@@ -13,41 +14,36 @@ typedef enum {
 } UserState;
 
 struct User {
+    // chat part
     int logged;
     int id;
     char name[USERNAME_SIZE];
     char password[PASSWORD_SIZE];
-    // input buffer
-    char buffer[RECEIVE_SIZE + 1];
-    int buffer_size;
-    int buffer_checked;
-    // output buffer
-    char obuffer[SEND_SIZE];
-    int obuffer_size;
-    int obuffer_sent;
-    // connection type
-    UserState state;
+};
+
+struct Database {
+    sqlite3 *database;
 };
 
 /**
  * database init
- * @param db database
+ * @param database database
  * @return execution result
  */
-int init_db(sqlite3 **db);
+int init_db(struct Database *database);
 /**
  * save user in database
  * @param database database
  * @param user users array
  * @return execution result
  */
-int user_save(sqlite3 *database, struct User *user);
+int user_save(struct Database *database, struct User *user);
 /**
  * get user from database
  * @param database database
  * @param user user
  * @return execution result
  */
-int user_get(sqlite3 *database, struct User *user);
+int user_get(struct Database *database, struct User *user);
 
 #endif //TEST_USER_H

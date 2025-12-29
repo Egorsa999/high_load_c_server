@@ -6,6 +6,38 @@
 #include <poll.h>
 #include <netdb.h>
 
+struct Server {
+    // socket's info
+    int sockfd;
+    int nfds;
+    struct pollfd *fds;
+
+    // data for connected clients
+    struct Client *clients;
+
+    // database
+    struct Database *database;
+};
+
+struct Client {
+    // client part
+    int fd;
+    int fds_index;
+    // input buffer
+    char buffer[RECEIVE_SIZE + 1];
+    int buffer_size;
+    int buffer_checked;
+    // output buffer
+    char obuffer[SEND_SIZE];
+    int obuffer_size;
+    int obuffer_sent;
+    // connection type
+    UserState state;
+
+    // data for chat
+    struct User user;
+};
+
 /**
  * Extract the IP address from a sockaddr structure, supporting both IPv4 and IPv6.
  * @param sa Pointer to the sockaddr structure (either sockaddr_in or sockaddr_in6).
@@ -34,13 +66,18 @@ void sigchld_handler(int s);
 int set_nonblocking(int sockfd);
 /**
  * send message without leaks and without socket blocking
- * @param fd socket fd
- * @param user user struct
- * @param poll_struct poll struct
+ * @param server server struct
+ * @param client client struct
  * @param message message
  * @param size message size
  * @return execution code
  */
-int send_message(int fd, struct User *user, struct pollfd *poll_struct, char *message, int size);
+int send_message(struct Server *server, struct Client *client, char *message, int size);
+/**
+ * close connection
+ * @param server server struct
+ * @param client client struct
+ */
+void close_connection(struct Server *server, struct Client *client);
 
 #endif //TEST_NETWORK_H

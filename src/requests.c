@@ -8,35 +8,36 @@
 #include "config.h"
 #include "network.h"
 
-void user_request(int fd, char *buffer, int amount_bytes, struct User *users, sqlite3 *database, struct pollfd *fds, int nfds, struct pollfd *poll_struct) {
-    if (users[fd].state == PROTO_WS_CONNECTED) {
-        printf("Receive from WebSocket %d: %s\n", fd, buffer);
+void user_request(struct Server *server, struct Client *client, char *buffer, int amount_bytes) {
+    if (client -> state == PROTO_WS_CONNECTED) {
+        printf("Receive from WebSocket %d: %s\n", client -> fd, buffer);
     } else {
-        printf("Receive from TCP %d: %s\n", fd, buffer);
+        printf("Receive from TCP %d: %s\n", client -> fd, buffer);
     }
-    if (users[fd].logged == 0) {
-        registration(fd, buffer, amount_bytes, users, database, poll_struct);
+    if (client -> user.logged == 0) {
+        registration(server, client, buffer, amount_bytes);
     } else {
         char message[SEND_SIZE];
         unsigned int message_length;
         // send message to each connected user
-        message_length = snprintf(message, sizeof(message), "Message from %s: %s\n", users[fd].name, buffer);
+        message_length = snprintf(message, sizeof(message), "Message from %s: %s\n", client -> user.name, buffer);
         if (message_length >= sizeof(message)) {
             message_length = sizeof(message) - 1;
         }
-        for (int i = 1; i < nfds; i++) {
-            if (users[fds[i].fd].logged && users[fds[i].fd].id != users[fd].id) {
-                if (send_message(fds[i].fd, &users[fds[i].fd], &fds[i], message, message_length) == -1) {
+        for (int i = 1; i < server -> nfds; i++) {
+            printf("Try send msg (%s) to %s\n", message, server -> clients[server -> fds[i].fd].user.name);
+            if (server -> clients[server -> fds[i].fd].user.logged && server -> clients[server -> fds[i].fd].user.id != client -> user.id) {
+                if (send_message(server, &server -> clients[server -> fds[i].fd], message, message_length) == -1) {
                     perror("send");
                 }
             }
         }
 
-        message_length = snprintf(message, sizeof(message), "You are logged as %s, wait next updates!\nNow your message was sent to every logged user!\n", users[fd].name);
+        message_length = snprintf(message, sizeof(message), "You are logged as %s, wait next updates!\nNow your message was sent to every logged user!\n", client -> user.name);
         if (message_length >= sizeof(message)) {
             message_length = sizeof(message) - 1;
         }
-        if (send_message(fd, &users[fd], poll_struct, message, message_length) == -1) {
+        if (send_message(server, client, message, message_length) == -1) {
             perror("send");
         }
     }

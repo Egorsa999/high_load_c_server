@@ -26,30 +26,37 @@ int main(void) {
     socklen_t sin_size;
     char s[INET6_ADDRSTRLEN];
 
-    //database init
-    sqlite3 *database;
+    // database init
+    struct Database database;
     if (init_db(&database) != SQLITE_OK) {
         exit(1);
     }
 
     struct pollfd *fds = calloc(BACKLOG + 1, sizeof(struct pollfd)); // socket's array
-    struct User *users = calloc(BACKLOG + 1, sizeof(struct User)); // user's array
-    if (fds == NULL || users == NULL) {
+    struct Client *clients = calloc(BACKLOG + 1, sizeof(struct Client)); // client's array
+    if (fds == NULL || clients == NULL) {
         printf("Not enough memory\n");
         return 0;
     }
-    int nfds = 1; // amount of connections
     int amount_connection = 0; // count of all connections
 
     fds[0].fd = sockfd = get_listener_socket(PORT, BACKLOG); // get listener descriptor
     fds[0].events = POLLIN; // ready to listen
+
+    // init server struct
+    struct Server server;
+    server.sockfd = sockfd;
+    server.nfds = 1;
+    server.database = &database;
+    server.fds = fds;
+    server.clients = clients;
 
     printf("Server started.\n");
 
     while (1) {
 
         // wait update in some socket
-        int poll_amount = poll(fds, nfds, -1);
+        int poll_amount = poll(fds, server.nfds, -1);
 
         if (poll_amount == -1) {
             perror("poll");
@@ -82,27 +89,35 @@ int main(void) {
                 }
 
                 // add new socket for client
-                fds[nfds].fd = new_fd;
-                fds[nfds].events = POLLIN;
+                fds[server.nfds].fd = new_fd;
+                fds[server.nfds].events = POLLIN;
 
-                // init user as not logged
-                memset(&users[new_fd], 0, sizeof(struct User));
-                users[new_fd].state = PROTO_UNKNOWN;
-                users[new_fd].logged = 0;
-                users[new_fd].id = -1;
-                nfds++;
+                // init client as not logged
+                memset(&clients[new_fd], 0, sizeof(struct Client));
+                clients[new_fd].fd = new_fd;
+                clients[new_fd].fds_index = server.nfds;
+                clients[new_fd].state = PROTO_UNKNOWN;
+                clients[new_fd].user.logged = 0;
+                clients[new_fd].user.id = -1;
+                server.nfds++;
 
                 printf("Got connection from: %s\nSocket id: %d\n", s, new_fd);
             }
         }
 
         // check each client socket
-        for (int i = 1; i < nfds; i++) {
+        for (int i = 1; i < server.nfds; i++) {
             if (fds[i].revents & POLLIN) {
-                struct User *user = &users[fds[i].fd];
+                struct Client *client = &clients[fds[i].fd];
 
-                int remaining_size = RECEIVE_SIZE - user -> buffer_size;
-                int amount_bytes = recv(fds[i].fd, user -> buffer + user -> buffer_size, remaining_size, 0);
+                int remaining_size = RECEIVE_SIZE - client -> buffer_size;
+                printf("%d, %d\n", fds[i].fd, remaining_size);
+                if (remaining_size <= 0) {
+                    close_connection(&server, client);
+                    i--;
+                    continue;
+                }
+                int amount_bytes = recv(fds[i].fd, client -> buffer + client -> buffer_size, remaining_size, 0);
                 if (amount_bytes <= 0) {
                     if (amount_bytes == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                         continue; // socket still alive
@@ -113,122 +128,108 @@ int main(void) {
                     } else {
                         perror("recv");
                     }
-                    memset(&users[fds[i].fd], 0, sizeof(struct User));
-                    close(fds[i].fd);
-
-                    // delete socket
-                    fds[i] = fds[nfds - 1];
-                    nfds--;
+                    close_connection(&server, client);
                     i--;
                     continue;
                 }
 
-                user -> buffer_size += amount_bytes;
+                client -> buffer_size += amount_bytes;
 
-                // determine it's TCP or WebSocket
-                if (user -> state == PROTO_UNKNOWN) {
-                    if (user -> buffer_size >= 3) {
-                        if (strncmp(user -> buffer, "GET", 3) == 0) {
-                            user -> state = PROTO_WS_HANDSHAKE;
+                // determine it's TCP or WebSocket w
+                if (client -> state == PROTO_UNKNOWN) {
+                    if (client -> buffer_size >= 3) {
+                        if (strncmp(client -> buffer, "GET", 3) == 0) {
+                            client -> state = PROTO_WS_HANDSHAKE;
                         } else {
-                            user -> state = PROTO_TCP;
+                            client -> state = PROTO_TCP;
                         }
                     } else {
                         continue;
                     }
                 }
 
-                if (user -> state == PROTO_TCP) {
+                if (client -> state == PROTO_TCP) {
                     char *ptr;
                     int shift_size = 0;
-                    char *last = user -> buffer;
+                    char *last = client -> buffer;
 
                     // find separator
-                    while ((ptr = memchr(user -> buffer + user -> buffer_checked, CMD_SEP, user -> buffer_size - user -> buffer_checked))) {
+                    while ((ptr = memchr(client -> buffer + client -> buffer_checked, CMD_SEP, client -> buffer_size - client -> buffer_checked))) {
                         int cmd_size = ptr - last + 1;
                         *ptr = '\0';
 
                         printf("Found command: %s\n", last);
                         // processing command
-                        user_request(fds[i].fd, last, cmd_size, users, database, fds, nfds, &fds[i]);
+                        user_request(&server, client, last, cmd_size);
 
                         last = ptr + 1;
-                        user -> buffer_checked = last - user -> buffer;
+                        client -> buffer_checked = last - client -> buffer;
                     }
 
                     //shift if we do some commands
-                    if (last != user -> buffer) {
-                        remaining_size = user -> buffer_size - (last - user -> buffer);
+                    if (last != client -> buffer) {
+                        remaining_size = client -> buffer_size - (last - client -> buffer);
                         if (remaining_size > 0) {
-                            memmove(user -> buffer, last, remaining_size);
+                            memmove(client -> buffer, last, remaining_size);
                         }
-                        user -> buffer_size = remaining_size;
+                        client -> buffer_size = remaining_size;
                     }
 
-                    user -> buffer_checked = user -> buffer_size;
+                    client -> buffer_checked = client -> buffer_size;
                 } else {
-                    if (user -> state == PROTO_WS_HANDSHAKE) {
-                        user -> buffer[user -> buffer_size] = '\0';
+                    if (client -> state == PROTO_WS_HANDSHAKE) {
+                        client -> buffer[client -> buffer_size] = '\0';
                         // start search from -3 bytes because length string is 4
-                        char *ptr = strstr(user -> buffer + (user -> buffer_checked >= 3 ? user -> buffer_checked - 3 : 0), "\r\n\r\n");
+                        char *ptr = strstr(client -> buffer + (client -> buffer_checked >= 3 ? client -> buffer_checked - 3 : 0), "\r\n\r\n");
                         if (ptr) {
-                            if (ws_handshake(fds[i].fd, user, &fds[i]) == 0) {
-                                user -> state = PROTO_WS_CONNECTED;
-                                int header_length = (ptr - user -> buffer) + 4;
-                                int remaining = user -> buffer_size - header_length;
+                            if (ws_handshake(&server, client) == 0) {
+                                client -> state = PROTO_WS_CONNECTED;
+                                int header_length = (ptr - client -> buffer) + 4;
+                                int remaining = client -> buffer_size - header_length;
 
                                 //clearing buffer
                                 if (remaining > 0) {
-                                    memmove(user -> buffer, user -> buffer + header_length, remaining);
+                                    memmove(client -> buffer, client -> buffer + header_length, remaining);
                                 }
-                                user -> buffer_size = remaining;
-                                user -> buffer_checked = 0;
+                                client -> buffer_size = remaining;
+                                client -> buffer_checked = 0;
 
                                 printf("Handshake done correct for socket %d\n", fds[i].fd);
                             } else {
                                 printf("Handshake failed for socket %d\n", fds[i].fd);
-                                close(fds[i].fd);
-                                memset(&users[fds[i].fd], 0, sizeof(struct User));
-                                fds[i] = fds[nfds - 1];
-                                nfds--;
+                                close_connection(&server, client);
                                 i--;
                                 continue;
                             }
                         } else {
-                            user -> buffer_checked = user -> buffer_size;
+                            client -> buffer_checked = client -> buffer_size;
                         }
                     } else {
-                        if (user -> state == PROTO_WS_CONNECTED) {
+                        if (client -> state == PROTO_WS_CONNECTED) {
                             int err_code;
-                            int was_checked = user -> buffer_checked;
-                            while ((err_code = frame_to_text(user)) > 0) {
+                            int was_checked = client -> buffer_checked;
+                            while ((err_code = frame_to_text(client)) > 0) {
                                 // process command which we receive
-                                user_request(fds[i].fd, user -> buffer + was_checked, err_code, users, database, fds, nfds, &fds[i]);
-                                was_checked = user -> buffer_checked;
+                                user_request(&server, client, client -> buffer + was_checked, err_code);
+                                was_checked = client -> buffer_checked;
                             }
                             // close connection
                             if (err_code == -1) {
                                 printf("WebSocket %d disconnect\n", fds[i].fd);
-                                close(fds[i].fd);
-                                memset(&users[fds[i].fd], 0, sizeof(struct User));
-                                fds[i] = fds[nfds - 1];
-                                nfds--;
+                                close_connection(&server, client);
                                 i--;
                                 continue;
                             }
                             // buffer shift
-                            remaining_size = user -> buffer_size - user -> buffer_checked;
+                            remaining_size = client -> buffer_size - client -> buffer_checked;
                             if (remaining_size > 0) {
-                                memmove(user -> buffer, user -> buffer + user -> buffer_checked, remaining_size);
+                                memmove(client -> buffer, client -> buffer + client -> buffer_checked, remaining_size);
                             }
-                            user -> buffer_size = remaining_size;
-                            user -> buffer_checked = 0;
+                            client -> buffer_size = remaining_size;
+                            client -> buffer_checked = 0;
                         } else {
                             printf("Unknown state.\n");
-                            close(fds[i].fd);
-                            memset(&users[fds[i].fd], 0, sizeof(struct User));
-                            fds[i] = fds[nfds - 1];
-                            nfds--;
+                            close_connection(&server, client);
                             i--;
                             continue;
                         }
@@ -237,29 +238,25 @@ int main(void) {
             }
 
             if (fds[i].revents & POLLOUT) {
-                struct User *user = &users[fds[i].fd];
-                int remaining = user -> obuffer_size - user -> obuffer_sent;
+                struct Client *client = &clients[fds[i].fd];
+                int remaining = client -> obuffer_size - client -> obuffer_sent;
 
                 // try send all what we have
-                int sent = send(fds[i].fd, user -> obuffer + user -> obuffer_sent, remaining, 0);
+                int sent = send(fds[i].fd, client -> obuffer + client -> obuffer_sent, remaining, 0);
 
                 if (sent > 0) {
-                    user -> obuffer_sent += sent;
+                    client -> obuffer_sent += sent;
                     // if we sent all
-                    if (user -> obuffer_sent == user -> obuffer_size) {
-                        user -> obuffer_sent = 0;
-                        user -> obuffer_size = 0;
+                    if (client -> obuffer_sent == client -> obuffer_size) {
+                        client -> obuffer_sent = 0;
+                        client -> obuffer_size = 0;
 
                         fds[i].events &= ~POLLOUT;
                     }
                 } else {
                     if (sent == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
                         // socket error
-                        perror("send");
-                        close(fds[i].fd);
-                        memset(&users[fds[i].fd], 0, sizeof(struct User));
-                        fds[i] = fds[nfds - 1];
-                        nfds--;
+                        close_connection(&server, client);
                         i--;
                         continue;
                     }
@@ -268,8 +265,8 @@ int main(void) {
         }
     }
 
-    sqlite3_close(database);
-    free(users);
+    sqlite3_close(database.database);
+    free(clients);
     free(fds);
 
     return 0;

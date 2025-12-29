@@ -29,27 +29,38 @@ void *get_in_addr(struct sockaddr *sa) {
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-int send_message(int fd, struct User *user, struct pollfd *poll_struct, char *message, int size) {
-    if (user -> state == PROTO_WS_CONNECTED) {
-        if (text_to_frame(message, &size) == -1) {
+void close_connection(struct Server *server, struct Client *client) {
+    close(client -> fd);
+    int fds_index_close = client -> fds_index;
+    memset(&server -> clients[client -> fd], 0, sizeof(struct Client));
+    server -> fds[fds_index_close] = server -> fds[server -> nfds - 1];
+    server -> clients[server -> fds[fds_index_close].fd].fds_index = fds_index_close;
+    server -> nfds--;
+}
+
+int send_message(struct Server *server, struct Client *client, char *message, int size) {
+    char *imessage = message;
+    if (client -> state == PROTO_WS_CONNECTED) {
+        char frame[SEND_SIZE];
+        memcpy(frame, message, size);
+        if (text_to_frame(frame, &size) == -1) {
             return -1; // buffer overflow
         }
+        imessage = frame;
     }
     // check if buffer not empty
-    if (user -> obuffer_size) {
-        if (user -> obuffer_size + size > SEND_SIZE) {
+    if (client -> obuffer_size) {
+        if (client -> obuffer_size + size > SEND_SIZE) {
             return -1; // buffer overflow
         }
 
-        memcpy(user -> obuffer + user -> obuffer_size, message, size);
-        user -> obuffer_size += size;
-        if (poll_struct) {
-            poll_struct -> events |= POLLOUT;
-        }
+        memcpy(client -> obuffer + client -> obuffer_size, imessage, size);
+        client -> obuffer_size += size;
+        server -> fds[client -> fds_index].events |= POLLOUT;
         return 0;
     }
 
-    int sent = send(fd, message, size, 0);
+    int sent = send(client -> fd, imessage, size, 0);
 
     if (sent == -1) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -65,12 +76,10 @@ int send_message(int fd, struct User *user, struct pollfd *poll_struct, char *me
         int remaining = size - sent;
         if (remaining > SEND_SIZE) return -1;
 
-        memcpy(user -> obuffer, message + sent, remaining);
-        user -> obuffer_size = remaining;
-        user -> obuffer_sent = 0;
-        if (poll_struct) {
-            poll_struct -> events |= POLLOUT;
-        }
+        memcpy(client -> obuffer, imessage + sent, remaining);
+        client -> obuffer_size = remaining;
+        client -> obuffer_sent = 0;
+        server -> fds[client -> fds_index].events |= POLLOUT;
     }
 
     return 0;

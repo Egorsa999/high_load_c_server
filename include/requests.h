@@ -12,15 +12,11 @@
 
 /**
  * process users commands
- * @param fd user socket id
+ * @param server server struct
+ * @param client client struct
  * @param buffer command from user
  * @param amount_bytes size of command
- * @param users users array
- * @param database database
- * @param fds listener socket id
- * @param nfds array of sockets
- * @param poll_struct poll struct
  */
-void user_request(int fd, char *buffer, int amount_bytes, struct User *users, sqlite3 *database, struct pollfd *fds, int nfds, struct pollfd *poll_struct);
+void user_request(struct Server *server, struct Client *client, char *buffer, int amount_bytes);
 
 #endif //TEST_REQUESTS_H

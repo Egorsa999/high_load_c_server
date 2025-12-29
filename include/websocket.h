@@ -4,22 +4,22 @@
 #include <poll.h>
 
 #include "user.h"
+#include "network.h"
 
 
 /**
  * make handshake
- * @param fd socket fd
- * @param user user struct
- * @param poll_struct poll struct
+ * @param server server struct
+ * @param client client struct
  * @return execution code
  */
-int ws_handshake(int fd, struct User *user, struct pollfd *poll_struct);
+int ws_handshake(struct Server *server, struct Client *client);
 /**
  * frame to text
- * @param user user struct
+ * @param client client struct
  * @return execution code
  */
-int frame_to_text(struct User *user);
+int frame_to_text(struct Client *client);
 /**
  * text to frame
  * @param message message

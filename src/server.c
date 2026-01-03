@@ -3,7 +3,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <arpa/inet.h>
-#include <poll.h>
+#include <sys/epoll.h>
 #include <errno.h>
 #include <signal.h>
 
@@ -12,6 +12,17 @@
 #include "requests.h"
 #include "config.h"
 #include "websocket.h"
+
+// add fd to epoll
+void add_to_epoll(int epoll_fd, int fd, uint32_t events) {
+    struct epoll_event event;
+    event.events = events;
+    event.data.fd = fd;
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event) == -1) {
+        perror("epoll_ctl: add");
+        exit(1);
+    }
+}
 
 int main(void) {
     //for logs in docker
@@ -32,104 +43,118 @@ int main(void) {
         exit(1);
     }
 
-    struct pollfd *fds = calloc(BACKLOG + 1, sizeof(struct pollfd)); // socket's array
+    struct epoll_event *events = calloc(BACKLOG + 1, sizeof(struct epoll_event)); // epoll's array
+    int *connections = calloc(BACKLOG + 1, sizeof(int));
     struct Client *clients = calloc(BACKLOG + 1, sizeof(struct Client)); // client's array
-    if (fds == NULL || clients == NULL) {
+    if (events == NULL || clients == NULL) {
         printf("Not enough memory\n");
         return 0;
     }
-    int amount_connection = 0; // count of all connections
 
-    fds[0].fd = sockfd = get_listener_socket(PORT, BACKLOG); // get listener descriptor
-    fds[0].events = POLLIN; // ready to listen
+    sockfd = get_listener_socket(PORT, BACKLOG); // get listener descriptor
+
+    // create epoll
+    int epoll_fd = epoll_create1(0);
+    if (epoll_fd == -1) {
+        perror("epoll_create1");
+        exit(1);
+    }
+
+    add_to_epoll(epoll_fd, sockfd, EPOLLIN);
 
     // init server struct
     struct Server server;
-    server.sockfd = sockfd;
-    server.nfds = 1;
+    server.lsfd = sockfd;
+    server.amount_connections = 0;
+    server.connections = connections;
+    server.epoll_fd = epoll_fd;
+    server.events = events;
     server.database = &database;
-    server.fds = fds;
     server.clients = clients;
 
     printf("Server started.\n");
 
     while (1) {
-
         // wait update in some socket
-        int poll_amount = poll(fds, server.nfds, -1);
-
-        if (poll_amount == -1) {
+        int epoll_amount = epoll_wait(epoll_fd, events, BACKLOG, -1);
+        printf("log epoll_amount: %d\n", epoll_amount);
+        if (epoll_amount == -1) {
             perror("poll");
             exit(1);
         }
 
-        // check new connection
-        if (fds[0].revents & POLLIN) {
-            sin_size = sizeof(their_addr);
-            new_fd = accept(sockfd, (struct sockaddr*)&their_addr, &sin_size);
-            if (new_fd == -1) {
-                perror("accept");
-            } else {
-                amount_connection++;
-                //set nonblocking
-                if (set_nonblocking(new_fd) == -1) {
-                    close(new_fd);
-                    perror("set_nonblocking");
-                    continue;
+        for (int i = 0; i < epoll_amount; i++) {
+            // check new connection
+            if (events[i].data.fd == sockfd) {
+                while (1) {
+                    sin_size = sizeof(their_addr);
+                    new_fd = accept(sockfd, (struct sockaddr*)&their_addr, &sin_size);
+                    if (new_fd == -1) {
+                        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                            break;
+                        }
+                        perror("accept");
+                        break;
+                    } else {
+                        //set nonblocking
+                        if (set_nonblocking(new_fd) == -1) {
+                            close(new_fd);
+                            perror("set_nonblocking");
+                            continue;
+                        }
+
+                        // client ip-address convert
+                        inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr*)&their_addr), s, sizeof(s));
+
+                        //if socket too large
+                        if (new_fd >= BACKLOG) {
+                            close(new_fd);
+                            printf("Socket %d too large\n", new_fd);
+                            continue;
+                        }
+
+                        // add new socket for client
+                        add_to_epoll(epoll_fd, new_fd, EPOLLIN);
+
+                        server.connections[server.amount_connections] = new_fd;
+
+                        // init client as not logged
+                        memset(&clients[new_fd], 0, sizeof(struct Client));
+                        clients[new_fd].fd = new_fd;
+                        clients[new_fd].state = PROTO_UNKNOWN;
+                        clients[new_fd].user.logged = 0;
+                        clients[new_fd].user.id = -1;
+                        clients[new_fd].connection_id = server.amount_connections++;
+
+                        printf("Got connection from: %s\nSocket id: %d\n", s, new_fd);
+                        continue;
+                    }
                 }
-
-                // client ip-address convert
-                inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr*)&their_addr), s, sizeof(s));
-
-                //if socket too large
-                if (new_fd >= BACKLOG) {
-                    close(new_fd);
-                    printf("Socket %d too large\n", new_fd);
-                    continue;
-                }
-
-                // add new socket for client
-                fds[server.nfds].fd = new_fd;
-                fds[server.nfds].events = POLLIN;
-
-                // init client as not logged
-                memset(&clients[new_fd], 0, sizeof(struct Client));
-                clients[new_fd].fd = new_fd;
-                clients[new_fd].fds_index = server.nfds;
-                clients[new_fd].state = PROTO_UNKNOWN;
-                clients[new_fd].user.logged = 0;
-                clients[new_fd].user.id = -1;
-                server.nfds++;
-
-                printf("Got connection from: %s\nSocket id: %d\n", s, new_fd);
+                continue;
             }
-        }
 
-        // check each client socket
-        for (int i = 1; i < server.nfds; i++) {
-            if (fds[i].revents & POLLIN) {
-                struct Client *client = &clients[fds[i].fd];
+            struct Client *client = &clients[events[i].data.fd];
+
+            if (events[i].events & EPOLLIN) {
 
                 int remaining_size = RECEIVE_SIZE - client -> buffer_size;
-                printf("%d, %d\n", fds[i].fd, remaining_size);
+                printf("%d, %d\n", events[i].data.fd, remaining_size);
                 if (remaining_size <= 0) {
                     close_connection(&server, client);
-                    i--;
                     continue;
                 }
-                int amount_bytes = recv(fds[i].fd, client -> buffer + client -> buffer_size, remaining_size, 0);
+                int amount_bytes = recv(events[i].data.fd, client -> buffer + client -> buffer_size, remaining_size, 0);
                 if (amount_bytes <= 0) {
                     if (amount_bytes == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                         continue; // socket still alive
                     }
                     // client close connection or flood or some error
                     if (amount_bytes == 0) {
-                        printf("Socket %d hung up or flood\n", fds[i].fd);
+                        printf("Socket %d hung up or flood\n", events[i].data.fd);
                     } else {
                         perror("recv");
                     }
                     close_connection(&server, client);
-                    i--;
                     continue;
                 }
 
@@ -194,11 +219,10 @@ int main(void) {
                                 client -> buffer_size = remaining;
                                 client -> buffer_checked = 0;
 
-                                printf("Handshake done correct for socket %d\n", fds[i].fd);
+                                printf("Handshake done correct for socket %d\n", events[i].data.fd);
                             } else {
-                                printf("Handshake failed for socket %d\n", fds[i].fd);
+                                printf("Handshake failed for socket %d\n", events[i].data.fd);
                                 close_connection(&server, client);
-                                i--;
                                 continue;
                             }
                         } else {
@@ -215,9 +239,8 @@ int main(void) {
                             }
                             // close connection
                             if (err_code == -1) {
-                                printf("WebSocket %d disconnect\n", fds[i].fd);
+                                printf("WebSocket %d disconnect\n", events[i].data.fd);
                                 close_connection(&server, client);
-                                i--;
                                 continue;
                             }
                             // buffer shift
@@ -230,19 +253,17 @@ int main(void) {
                         } else {
                             printf("Unknown state.\n");
                             close_connection(&server, client);
-                            i--;
                             continue;
                         }
                     }
                 }
             }
 
-            if (fds[i].revents & POLLOUT) {
-                struct Client *client = &clients[fds[i].fd];
+            if (events[i].events & EPOLLOUT) {
                 int remaining = client -> obuffer_size - client -> obuffer_sent;
 
                 // try send all what we have
-                int sent = send(fds[i].fd, client -> obuffer + client -> obuffer_sent, remaining, 0);
+                int sent = send(events[i].data.fd, client -> obuffer + client -> obuffer_sent, remaining, 0);
 
                 if (sent > 0) {
                     client -> obuffer_sent += sent;
@@ -251,13 +272,17 @@ int main(void) {
                         client -> obuffer_sent = 0;
                         client -> obuffer_size = 0;
 
-                        fds[i].events &= ~POLLOUT;
+                        struct epoll_event ev;
+                        ev.events = EPOLLIN;
+                        ev.data.fd = client -> fd;
+                        if (epoll_ctl(server.epoll_fd, EPOLL_CTL_MOD, client->fd, &ev) == -1) {
+                            perror("epoll_ctl: mod out");
+                        }
                     }
                 } else {
                     if (sent == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
                         // socket error
                         close_connection(&server, client);
-                        i--;
                         continue;
                     }
                 }
@@ -267,7 +292,7 @@ int main(void) {
 
     sqlite3_close(database.database);
     free(clients);
-    free(fds);
+    free(events);
 
     return 0;
 }

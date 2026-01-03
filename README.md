@@ -36,16 +36,15 @@ Implemented TCP chat server on C with sqlite3 for storage User data. This projec
 
 1. Compile and Start:
    ```bash
-   make
-   ./bin/server
+   make docker-build-run
 2. Connect via telnet:
    ```bash
    telnet localhost 3490
 3. Commands:
-- Registration: Send:
+- Registration:
    ```bash
    :0:username:password:
-- Login: Send:
+- Login:
    ```bash
    :1:username:password:
 - Messaging: After Login into account every message will send to each connected user.
@@ -57,8 +56,9 @@ Implemented TCP chat server on C with sqlite3 for storage User data. This projec
 - Add private messaging between two clients.
 - Store messages in database.
 - Hashing messages and passwords in database.
+- Use threads for non-blocking database usage.
 - Create a Dockerfile for easy deployment in any environment. ✅
-- Switch from 'poll()' to 'epoll()' or its equivalent.
+- Switch from 'poll()' to 'epoll()' or its equivalent. ✅
 - Implement WebSocket handshake and framing to support browser clients. ✅
 
 ---

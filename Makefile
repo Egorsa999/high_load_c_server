@@ -4,7 +4,9 @@ CONTAINER_NAME = my_server
 PORT = 3490
 
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -O2 -g -Iinclude -D_POSIX_C_SOURCE=200809L
+CFLAGS = -fsanitize=address -Wall -Wextra -std=c99 -g -Iinclude -D_POSIX_C_SOURCE=200809L
+LDFLAGS = -fsanitize=address
+
 LIBS = -lsqlite3
 
 SRC_DIR = src
@@ -22,7 +24,7 @@ directories:
 	@mkdir -p $(OBJ_DIR) $(BIN_DIR) $(DATA_DIR)
 
 $(BIN_DIR)/$(TARGET): $(OBJS)
-	$(CC) $(OBJS) -o $@ $(LIBS)
+	$(CC) $(LDFLAGS) $(OBJS) -o $@ $(LIBS)
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -35,11 +37,16 @@ re: clean all
 docker-build:
 	docker build -t $(IMAGE_NAME) .
 
-#docker run with save database
 docker-run:
 	docker run -p $(PORT):$(PORT) --rm \
-		-v $(PWD)/$(DATA_DIR):/app/$(DATA_DIR) \
-		--name $(CONTAINER_NAME) $(IMAGE_NAME)
+	   --privileged \
+	   --ulimit nofile=65535:65535 \
+	   -v $(PWD)/$(DATA_DIR):/app/$(DATA_DIR) \
+	   --name $(CONTAINER_NAME) $(IMAGE_NAME)
+
+docker-build-run:
+	make docker-build
+	make docker-run
 
 docker-stop:
 	docker stop $(CONTAINER_NAME)

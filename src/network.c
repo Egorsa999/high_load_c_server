@@ -1,6 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
-#define _GNU_SOURCE
-
 #include "network.h"
 #include "user.h"
 #include "websocket.h"
@@ -15,7 +12,7 @@
 #include <netinet/in.h>
 #include <sys/wait.h>
 #include <netdb.h>
-#include <poll.h>
+#include <sys/epoll.h>
 
 void sigchld_handler(int s) {
     (void)s;
@@ -30,18 +27,27 @@ void *get_in_addr(struct sockaddr *sa) {
 }
 
 void close_connection(struct Server *server, struct Client *client) {
-    close(client -> fd);
-    int fds_index_close = client -> fds_index;
-    memset(&server -> clients[client -> fd], 0, sizeof(struct Client));
-    server -> fds[fds_index_close] = server -> fds[server -> nfds - 1];
-    server -> clients[server -> fds[fds_index_close].fd].fds_index = fds_index_close;
-    server -> nfds--;
+    if (client -> connection_id != server -> amount_connections - 1) {
+        server -> connections[client -> connection_id] = server -> connections[server -> amount_connections - 1];
+        server -> clients[server -> connections[client -> connection_id]].connection_id = client -> connection_id;
+        server -> amount_connections--;
+    }
+    int fd = client -> fd;
+    if (epoll_ctl(server -> epoll_fd, EPOLL_CTL_DEL, fd, NULL) == -1) {
+        perror("epoll_ctl: del");
+    }
+    close(fd);
+    memset(client, 0, sizeof(struct Client));
+    client -> fd = -1;
 }
 
+
+
 int send_message(struct Server *server, struct Client *client, char *message, int size) {
+    // TODO optimase send_message
     char *imessage = message;
+    char frame[SEND_SIZE];
     if (client -> state == PROTO_WS_CONNECTED) {
-        char frame[SEND_SIZE];
         memcpy(frame, message, size);
         if (text_to_frame(frame, &size) == -1) {
             return -1; // buffer overflow
@@ -49,14 +55,19 @@ int send_message(struct Server *server, struct Client *client, char *message, in
         imessage = frame;
     }
     // check if buffer not empty
-    if (client -> obuffer_size) {
+    if (client -> obuffer_size > 0) {
         if (client -> obuffer_size + size > SEND_SIZE) {
             return -1; // buffer overflow
         }
 
         memcpy(client -> obuffer + client -> obuffer_size, imessage, size);
         client -> obuffer_size += size;
-        server -> fds[client -> fds_index].events |= POLLOUT;
+        struct epoll_event ev;
+        ev.events = EPOLLIN | EPOLLOUT;
+        ev.data.fd = client -> fd;
+        if (epoll_ctl(server -> epoll_fd, EPOLL_CTL_MOD, client -> fd, &ev) == -1) {
+            perror("epoll_ctl: mod out");
+        }
         return 0;
     }
 
@@ -79,7 +90,12 @@ int send_message(struct Server *server, struct Client *client, char *message, in
         memcpy(client -> obuffer, imessage + sent, remaining);
         client -> obuffer_size = remaining;
         client -> obuffer_sent = 0;
-        server -> fds[client -> fds_index].events |= POLLOUT;
+        struct epoll_event ev;
+        ev.events = EPOLLIN | EPOLLOUT;
+        ev.data.fd = client -> fd;
+        if (epoll_ctl(server -> epoll_fd, EPOLL_CTL_MOD, client -> fd, &ev) == -1) {
+            perror("epoll_ctl: mod out");
+        }
     }
 
     return 0;

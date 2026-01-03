@@ -2,7 +2,7 @@
 #define HIGH_LOAD_C_SERVER_CONFIG_H
 
 #define PORT "3490" // port for listening socket
-#define BACKLOG 32768 // max amount of simultaneous connections
+#define BACKLOG 65536 // max amount of simultaneous connections
 
 #define RECEIVE_SIZE 4096 // max size of receive
 #define SEND_SIZE 4096 // max size of send

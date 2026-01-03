@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <arpa/inet.h>
-#include <poll.h>
+#include <sys/epoll.h>
 
 #include "user.h"
 #include "registration.h"
@@ -24,10 +24,9 @@ void user_request(struct Server *server, struct Client *client, char *buffer, in
         if (message_length >= sizeof(message)) {
             message_length = sizeof(message) - 1;
         }
-        for (int i = 1; i < server -> nfds; i++) {
-            printf("Try send msg (%s) to %s\n", message, server -> clients[server -> fds[i].fd].user.name);
-            if (server -> clients[server -> fds[i].fd].user.logged && server -> clients[server -> fds[i].fd].user.id != client -> user.id) {
-                if (send_message(server, &server -> clients[server -> fds[i].fd], message, message_length) == -1) {
+        for (int i = 0; i < server -> amount_connections; i++) {
+            if (client -> fd != server -> connections[i]) {
+                if (send_message(server, &server -> clients[server -> connections[i]], message, message_length) == -1) {
                     perror("send");
                 }
             }

@@ -3,15 +3,27 @@
 
 #include "user.h"
 #include <sys/socket.h>
-#include <poll.h>
+#include <sys/epoll.h>
 #include <netdb.h>
 
-struct Server {
-    // socket's info
-    int sockfd;
-    int nfds;
-    struct pollfd *fds;
+typedef enum {
+    PROTO_UNKNOWN,
+    PROTO_TCP,
+    PROTO_WS_HANDSHAKE,
+    PROTO_WS_CONNECTED
+} UserState;
 
+struct Server {
+    // listener socket's info
+    int lsfd;
+
+    // info for broadcast
+    int amount_connections;
+    int *connections;
+
+    // epoll
+    int epoll_fd;
+    struct epoll_event *events;
     // data for connected clients
     struct Client *clients;
 
@@ -22,7 +34,7 @@ struct Server {
 struct Client {
     // client part
     int fd;
-    int fds_index;
+    int connection_id;
     // input buffer
     char buffer[RECEIVE_SIZE + 1];
     int buffer_size;

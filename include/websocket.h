@@ -1,7 +1,7 @@
 #ifndef HIGH_LOAD_C_SERVER_WEBSOCKET_H
 #define HIGH_LOAD_C_SERVER_WEBSOCKET_H
 
-#include <poll.h>
+#include <sys/epoll.h>
 
 #include "user.h"
 #include "network.h"

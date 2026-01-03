@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <arpa/inet.h>
-#include <poll.h>
+#include <sys/epoll.h>
 
 #include "user.h"
 #include "config.h"

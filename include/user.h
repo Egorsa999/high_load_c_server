@@ -2,16 +2,9 @@
 #define TEST_USER_H
 
 #include <sqlite3.h>
-#include <poll.h>
+#include <sys/epoll.h>
 
 #include "config.h"
-
-typedef enum {
-    PROTO_UNKNOWN,
-    PROTO_TCP,
-    PROTO_WS_HANDSHAKE,
-    PROTO_WS_CONNECTED
-} UserState;
 
 struct User {
     // chat part
